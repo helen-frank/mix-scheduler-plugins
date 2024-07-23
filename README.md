@@ -75,14 +75,7 @@ kubeadmConfigPatchesJSON6902:
       path: /apiServer/certSANs/-
       value: my-hostname
 
-# containerdConfigPatches:
-#- |-
-#  [plugins."io.containerd.grpc.v1.cri".registry.configs."harbor.ats.io".tls]
-#    insecure_skip_verify=true
-#  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-#    endpoint = ["https://8sqb5nwq.mirror.aliyuncs.com"]
-
-# 1 control plane node and 3 workers
+# 1 control plane node and 11 workers
 nodes:
 # the control plane node config
 - role: control-plane
