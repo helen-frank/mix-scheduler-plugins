@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -30,6 +31,7 @@ type SpotPlugin struct {
 }
 
 var _ framework.ScorePlugin = &SpotPlugin{}
+var _ framework.PostBindPlugin = &SpotPlugin{}
 
 // New initializes and returns a new PlacementPolicy plugin.
 func New(ctx context.Context, obj runtime.Object, handle framework.Handle) (framework.Plugin, error) {
@@ -48,6 +50,7 @@ func (s *SpotPlugin) Name() string {
 	return Name
 }
 
+// Score invoked at the score extension point.
 func (s *SpotPlugin) Score(ctx context.Context, state *framework.CycleState, p *corev1.Pod, nodeName string) (int64, *framework.Status) {
 	podList, err := s.GetPodsWithLabels(ctx, p.Labels)
 	if err != nil {
@@ -76,12 +79,12 @@ func (s *SpotPlugin) Score(ctx context.Context, state *framework.CycleState, p *
 	}
 
 	switch hasNodeSelectPodNum {
-	case 0:
+	case 0: // no node select pod
 		if nodeCap == ondemand {
 			return scoreWeight, nil
 		}
-	default:
-		if hasOnDemandPodNum == 0 {
+	default: // has node select pod
+		if hasOnDemandPodNum == 0 { // no on-demand pod
 			if nodeCap == ondemand {
 				return scoreWeight, nil
 			}
@@ -98,6 +101,49 @@ func (s *SpotPlugin) Score(ctx context.Context, state *framework.CycleState, p *
 
 func (s *SpotPlugin) ScoreExtensions() framework.ScoreExtensions {
 	return nil
+}
+
+// NormalizeScore invoked after scoring all nodes.
+func (p *SpotPlugin) NormalizeScore(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, scores framework.NodeScoreList) *framework.Status {
+	// Find highest and lowest scores.
+	var highest int64 = -math.MaxInt64
+	var lowest int64 = math.MaxInt64
+	for _, nodeScore := range scores {
+		if nodeScore.Score > highest {
+			highest = nodeScore.Score
+		}
+		if nodeScore.Score < lowest {
+			lowest = nodeScore.Score
+		}
+	}
+
+	// Transform the highest to lowest score range to fit the framework's min to max node score range.
+	oldRange := highest - lowest
+	newRange := framework.MaxNodeScore - framework.MinNodeScore
+	for i, nodeScore := range scores {
+		if oldRange == 0 {
+			scores[i].Score = framework.MinNodeScore
+		} else {
+			scores[i].Score = ((nodeScore.Score - lowest) * newRange / oldRange) + framework.MinNodeScore
+		}
+	}
+
+	klog.InfoS("normalized scores", "pod", pod.Name, "scores", scores)
+	return framework.NewStatus(framework.Success, "")
+}
+
+// PostBind invoked after a pod is successfully bound.
+func (s *SpotPlugin) PostBind(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, nodeName string) {
+	capacity, err := s.GetNodeCapacity(nodeName)
+	if err != nil {
+		klog.ErrorS(err, "failed to get node capacity", "node", nodeName)
+		return
+	}
+
+	if _, err = s.AnnotatePodNodeCapacity(ctx, pod, capacity); err != nil {
+		klog.ErrorS(err, "failed to annotate pod node capacity", "pod", pod.Name, "node", nodeName)
+		return
+	}
 }
 
 // GetPodsWithLabels returns the pods with labels
