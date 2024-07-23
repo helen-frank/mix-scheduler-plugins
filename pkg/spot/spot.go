@@ -207,5 +207,5 @@ func getAvailabilityGuaranteeKey(pod *corev1.Pod) int {
 
 // getUniformlyDistributedSocre returns the uniformly distributed score
 func getUniformlyDistributedSocre(weight, currentNodeSelctPodNum int) int64 {
-	return int64(math.Ceil(float64(weight) / float64(currentNodeSelctPodNum)))
+	return int64(math.Ceil(float64(weight) / float64(currentNodeSelctPodNum+1)))
 }
