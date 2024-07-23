@@ -21,7 +21,20 @@ Notes:
 - spot实例比较适合灵活性较高或具有容错性的应用程序
 - 为了保证服务的高可用性就需要在on-demand节点(非spot节点)上保持一定量应用pod, 并且在spot节点上的pod尽量分散节点部署, 避免单点spot节点下线导致的短时压力飙升, 过于加大其他pod的压力, 降低服务的可用性
 - 在未特殊配置的情况下, 尽量保证应用的大部分pod会分散部署在不同的spot节点上
-- 支持自定义可用性保证
+- 支持自定义可用性保证 mix-scheduler-plugins/availability-guarantee
+
+### 插入点
+
+#### score
+
+- 当应用在集群中无被节点匹配的pod时, 应尽量调度到on-demand节点
+- 存在被节点匹配的pod时,但是on-demand节点上无pod时, 应尽量调度到on-demand节点
+- mix-scheduler-plugins/availability-guarantee=0 or 1, 或者未设置的情况下应保证最低可用性, spot节点均衡性调度 `getUniformlyDistributedSocre(weight, currentNodeSelctPodNum int)`, on-demand节点不调整调度(此时经过上面的选择已经可确认已至少有1个pod在on-demand节点上)
+- hasOnDemandPodNum >= mix-scheduler-plugins/availability-guarantee 时, spot节点均衡性调度 `getUniformlyDistributedSocre(weight, currentNodeSelctPodNum int)`, on-demand节点不调整调度. hasOnDemandPodNum < mix-scheduler-plugins/availability-guarantee 时 on-demand节点均衡性调度`getUniformlyDistributedSocre(weight, currentNodeSelctPodNum int)`, spot节点不调整调度
+
+#### postBind
+
+根据pod所在调度节点, 配置pod annotations, 方便查询
 
 ## 快速开始
 
