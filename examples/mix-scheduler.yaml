@@ -202,10 +202,10 @@ spec:
             name: scheduler-config
       containers:
         - name: scheduler
-          image: helenfrank/helen-mix-scheduler:latest
+          image: helenfrank/mix-scheduler-plugins:latest
           imagePullPolicy: IfNotPresent
           command:
-            - helen-mix-scheduler
+            - mix-scheduler-plugins
             - --config=/etc/kubernetes/scheduler-config.yaml
             - --v=3
           volumeMounts:
