@@ -1,5 +1,5 @@
 BIN_FILE=mix-scheduler-plugins
-VERSION=latest
+VERSION ?= latest
 DEP_VERSION ?= v1.30.3
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
