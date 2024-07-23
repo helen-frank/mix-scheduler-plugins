@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -184,14 +185,7 @@ func (s *SpotPlugin) GetNodeCapacity(nodeName string) (string, error) {
 
 // AnnotatePodNodeCapacity annotates the node capacity of the pod
 func (s *SpotPlugin) AnnotatePodNodeCapacity(ctx context.Context, pod *corev1.Pod, capacity string) (*corev1.Pod, error) {
-	annotations := map[string]string{}
-	if pod.Annotations != nil {
-		annotations = pod.Annotations
-	}
-
-	annotations[capacityKey] = capacity
-	pod.Annotations = annotations
-	return s.client.CoreV1().Pods(pod.Namespace).Update(ctx, pod, metav1.UpdateOptions{})
+	return s.client.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.StrategicMergePatchType, []byte(`{"metadata": {"annotations": {"`+capacityKey+`": "`+capacity+`"}}}`), metav1.PatchOptions{})
 }
 
 // getAvailabilityGuaranteeKey returns the availability guarantee
