@@ -3,6 +3,7 @@ package spot
 import (
 	"context"
 	"math"
+	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,11 +16,13 @@ import (
 
 const (
 	// Name is the plugin name
-	Name = "spot"
+	Name = "mix-scheduler-plugins"
 
 	capacityKey = "node.kubernetes.io/capacity"
 	ondemand    = "on-demand"
 	spot        = "spot"
+
+	availabilityGuaranteeKey = "mix-scheduler-plugins/availability-guarantee"
 
 	scoreWeight = 100
 )
@@ -51,8 +54,8 @@ func (s *SpotPlugin) Name() string {
 }
 
 // Score invoked at the score extension point.
-func (s *SpotPlugin) Score(ctx context.Context, state *framework.CycleState, p *corev1.Pod, nodeName string) (int64, *framework.Status) {
-	podList, err := s.GetPodsWithLabels(ctx, p.Labels)
+func (s *SpotPlugin) Score(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, nodeName string) (int64, *framework.Status) {
+	podList, err := s.GetPodsWithLabels(ctx, pod.Labels)
 	if err != nil {
 		return 0, framework.NewStatus(framework.Error, "failed to get pods with labels: "+err.Error())
 	}
@@ -60,6 +63,7 @@ func (s *SpotPlugin) Score(ctx context.Context, state *framework.CycleState, p *
 	hasNodeSelectPodNum := 0
 	currentNodeSelctPodNum := 0
 	hasOnDemandPodNum := 0
+
 	for pi := range podList {
 		if len(podList[pi].Spec.NodeName) != 0 {
 			hasNodeSelectPodNum++
@@ -91,8 +95,25 @@ func (s *SpotPlugin) Score(ctx context.Context, state *framework.CycleState, p *
 			return 0, nil
 		}
 
-		if nodeCap == spot {
-			return int64(math.Ceil(scoreWeight/float64(currentNodeSelctPodNum) + 1)), nil
+		agNum := getAvailabilityGuaranteeKey(pod)
+
+		if agNum == 0 || agNum == 1 { // meet basic availability guarantees
+			if nodeCap == spot {
+				return getUniformlyDistributedSocre(scoreWeight, currentNodeSelctPodNum), nil
+			}
+		} else {
+			if hasOnDemandPodNum >= int(agNum) { // meet the availability guarantee
+				if nodeCap == spot {
+					return getUniformlyDistributedSocre(scoreWeight, currentNodeSelctPodNum), nil
+				}
+				return 0, nil
+			} else { // not meet the availability guarantee
+				if nodeCap == ondemand {
+					return getUniformlyDistributedSocre(scoreWeight, currentNodeSelctPodNum), nil
+				} else {
+					return 0, nil
+				}
+			}
 		}
 	}
 
@@ -108,12 +129,12 @@ func (p *SpotPlugin) NormalizeScore(ctx context.Context, state *framework.CycleS
 	// Find highest and lowest scores.
 	var highest int64 = -math.MaxInt64
 	var lowest int64 = math.MaxInt64
-	for _, nodeScore := range scores {
-		if nodeScore.Score > highest {
-			highest = nodeScore.Score
+	for si := range scores {
+		if scores[si].Score > highest {
+			highest = scores[si].Score
 		}
-		if nodeScore.Score < lowest {
-			lowest = nodeScore.Score
+		if scores[si].Score < lowest {
+			lowest = scores[si].Score
 		}
 	}
 
@@ -171,4 +192,26 @@ func (s *SpotPlugin) AnnotatePodNodeCapacity(ctx context.Context, pod *corev1.Po
 	annotations[capacityKey] = capacity
 	pod.Annotations = annotations
 	return s.client.CoreV1().Pods(pod.Namespace).Update(ctx, pod, metav1.UpdateOptions{})
+}
+
+// getAvailabilityGuaranteeKey returns the availability guarantee
+func getAvailabilityGuaranteeKey(pod *corev1.Pod) int {
+	if val := pod.Labels[availabilityGuaranteeKey]; val != "" {
+		v, err := strconv.Atoi(val)
+		if err == nil {
+			if v < 1 {
+				klog.Errorf("invalid value of %s, value: %s", availabilityGuaranteeKey, val)
+				return 0
+			}
+			return v
+		}
+		klog.Errorf("failed to parse %s, value: %s, error: %v", availabilityGuaranteeKey, val, err)
+	}
+
+	return 0
+}
+
+// getUniformlyDistributedSocre returns the uniformly distributed score
+func getUniformlyDistributedSocre(weight, currentNodeSelctPodNum int) int64 {
+	return int64(math.Ceil(float64(weight) / float64(currentNodeSelctPodNum)))
 }
