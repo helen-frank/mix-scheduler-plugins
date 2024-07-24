@@ -103,7 +103,7 @@ func (s *SpotPlugin) Score(ctx context.Context, state *framework.CycleState, pod
 				return getUniformlyDistributedSocre(scoreWeight, currentNodeSelctPodNum), nil
 			}
 		} else {
-			if hasOnDemandPodNum >= int(agNum) { // meet the availability guarantee
+			if hasOnDemandPodNum >= agNum { // meet the availability guarantee
 				if nodeCap == spot {
 					return getUniformlyDistributedSocre(scoreWeight, currentNodeSelctPodNum), nil
 				}
@@ -125,34 +125,34 @@ func (s *SpotPlugin) ScoreExtensions() framework.ScoreExtensions {
 	return nil
 }
 
-// NormalizeScore invoked after scoring all nodes.
-func (p *SpotPlugin) NormalizeScore(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, scores framework.NodeScoreList) *framework.Status {
-	// Find highest and lowest scores.
-	var highest int64 = -math.MaxInt64
-	var lowest int64 = math.MaxInt64
-	for si := range scores {
-		if scores[si].Score > highest {
-			highest = scores[si].Score
-		}
-		if scores[si].Score < lowest {
-			lowest = scores[si].Score
-		}
-	}
+// // NormalizeScore invoked after scoring all nodes.
+// func (p *SpotPlugin) NormalizeScore(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, scores framework.NodeScoreList) *framework.Status {
+// 	// Find highest and lowest scores.
+// 	var highest int64 = -math.MaxInt64
+// 	var lowest int64 = math.MaxInt64
+// 	for si := range scores {
+// 		if scores[si].Score > highest {
+// 			highest = scores[si].Score
+// 		}
+// 		if scores[si].Score < lowest {
+// 			lowest = scores[si].Score
+// 		}
+// 	}
 
-	// Transform the highest to lowest score range to fit the framework's min to max node score range.
-	oldRange := highest - lowest
-	newRange := framework.MaxNodeScore - framework.MinNodeScore
-	for i, nodeScore := range scores {
-		if oldRange == 0 {
-			scores[i].Score = framework.MinNodeScore
-		} else {
-			scores[i].Score = ((nodeScore.Score - lowest) * newRange / oldRange) + framework.MinNodeScore
-		}
-	}
+// 	// Transform the highest to lowest score range to fit the framework's min to max node score range.
+// 	oldRange := highest - lowest
+// 	newRange := framework.MaxNodeScore - framework.MinNodeScore
+// 	for i, nodeScore := range scores {
+// 		if oldRange == 0 {
+// 			scores[i].Score = framework.MinNodeScore
+// 		} else {
+// 			scores[i].Score = ((nodeScore.Score - lowest) * newRange / oldRange) + framework.MinNodeScore
+// 		}
+// 	}
 
-	klog.InfoS("normalized scores", "pod", pod.Name, "scores", scores)
-	return framework.NewStatus(framework.Success, "")
-}
+// 	klog.InfoS("normalized scores", "pod", pod.Name, "scores", scores)
+// 	return framework.NewStatus(framework.Success, "")
+// }
 
 // PostBind invoked after a pod is successfully bound.
 func (s *SpotPlugin) PostBind(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, nodeName string) {
